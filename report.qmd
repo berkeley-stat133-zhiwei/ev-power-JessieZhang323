@@ -1,5 +1,5 @@
 ---
-title: "EV Power - Lab 4 Project Report"
+title: "Renewable Energy Share and Electrix Vehicle Adoption Across US States (2021-2023)"
 format: typst
 ---
 
@@ -8,27 +8,236 @@ format: typst
 ## **Part 0: libraries**
 
 ```{r}
-
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
 ```
 
 ## **Part 1:** **Defining Research Question**
+This analysis explores the relationship between state-level renewable energy adoption and electric vehicle (EV) registrations in the United States from 2021 to 2023. The primary research question is:
 
-Chosen Question:
+How does the share of renewable energy relate to EV adoption and energy prices across U.S. states?
+
+Chosen sub-questions:
+1. How has the share of renewable energy changed from 2021 to 2023 across US states?
+2. Do states with higher renewable energy shares also have more EVs registered in 2023?
+3. Do states with higher renewable energy use have lower or higher average energy prices?
 
 ## **Part 2: Data Preparation and Cleaning**
 
 ```{r}
+renew_2021 <- read.csv("data/renew-use-2021.csv")
+renew_2022 <- read.csv("data/renew-use-2022.csv")
+renew_2023 <- read.csv("data/renew-use-2023.csv")
+total_use_2021 <- read.csv("data/total-use-2021.csv" )
+total_use_2022 <- read.csv("data/total-use-2022.csv" )
+total_use_2023 <- read.csv("data/total-use-2023.csv" )
+ev_regs <- read.csv("data/ev-registrations-by-state-2023.csv", skip=2)
+avg_price <- read.csv("data/av-energy-price-2021-2023.csv", sep=",")
+
+clean_colnames <- function(df){
+    colnames(df) <- tolower(colnames(df))
+    colnames(df)<- gsub(" ", "_", colnames(df))
+    return(df)
+}
+renew_2021 <- clean_colnames(renew_2021)
+renew_2022 <- clean_colnames(renew_2022)
+renew_2023 <- clean_colnames(renew_2023)
+avg_price <- clean_colnames(avg_price)
+total_use_2021 <- clean_colnames(total_use_2021)
+total_use_2022 <- clean_colnames(total_use_2022)
+total_use_2023 <- clean_colnames(total_use_2023)
+ev_regs <- clean_colnames(ev_regs)
+
+state_map <-data.frame(
+  state_name = c(state.name, "District of Columbia", "US"),
+  state_abbr = c(state.abb, "DC", "US"))
+  
+renew_2021$state <- trimws(renew_2021$state)
+renew_2022$state <- trimws(renew_2022$state)
+renew_2023$state <- trimws(renew_2023$state)
+renew_2021$state <- toupper(renew_2021$state)
+renew_2022$state <- toupper(renew_2022$state)
+renew_2023$state <- toupper(renew_2023$state)
+
+renew_2021$state <- state_map$state_name[match(renew_2021$state, state_map$state_abbr)]
+renew_2022$state <- state_map$state_name[match(renew_2022$state, state_map$state_abbr)]
+renew_2023$state <- state_map$state_name[match(renew_2023$state, state_map$state_abbr)]
+
+clean_numeric <- function(x) {
+  x <- gsub("[^0-9.]", "", x)  
+  as.numeric(x)
+}
+renew_2021$renewable_use_2021 <- clean_numeric(renew_2021$renewable_use_2021)
+renew_2022$renewable_use_2022 <- clean_numeric(renew_2022$renewable_use_2022)
+renew_2023$renewable_use_2023 <- clean_numeric(renew_2023$renewable_use_2023)
+
+ev_regs$count.evs<- clean_numeric(ev_regs$count.evs)
+avg_price$x2021 <- clean_numeric(avg_price$x2021)
+avg_price$x2022 <- clean_numeric(avg_price$x2022)
+avg_price$x2023 <- clean_numeric(avg_price$x2023)
+
+state_abbr <- c("AK","AL","AR","AZ","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID",
+                "IL","IN","KS","KY","LA","MA","MD","ME","MI","MN","MO","MS","MT","NC",
+                "ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","RI","SC","SD",
+                "TN","TX","UT","VA","VT","WA","WI","WV","WY","US")
+
+state_full <- c("Alaska","Alabama","Arkansas","Arizona","California","Colorado","Connecticut",
+                "District of Columbia","Delaware","Florida","Georgia","Hawaii","Iowa","Idaho",
+                "Illinois","Indiana","Kansas","Kentucky","Louisiana","Massachusetts","Maryland",
+                "Maine","Michigan","Minnesota","Missouri","Mississippi","Montana","North Carolina",
+                "North Dakota","Nebraska","New Hampshire","New Jersey","New Mexico","Nevada",
+                "New York","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina",
+                "South Dakota","Tennessee","Texas","Utah","Virginia","Vermont","Washington",
+                "Wisconsin","West Virginia","Wyoming","US")
+
+
+colnames(total_use_2021)[-1] <- state_full
+colnames(total_use_2022)[-1] <- state_full
+colnames(total_use_2023)[-1] <- state_full
+avg_price$state <- state_full[match(avg_price$state, state_abbr)]
+colnames(ev_regs)[1] <- "State"
+colnames(avg_price)[1] <- "State"
+head(avg_price)
+head(ev_regs)
+head(renew_2021)
+head(total_use_2021)
 
 ```
 
 ## **Part 3: Joining / Pivoting Datasets for Analysis**
 
 ```{r}
+renew_2021_sum <- aggregate(as.numeric(renew_2021$renewable_use_2021),
+                            by = list(State = renew_2021$state), sum, na.rm = TRUE)
+colnames(renew_2021_sum)[2] <- "Renewable_2021"
+
+renew_2022_sum <- aggregate(as.numeric(renew_2022$renewable_use_2022),
+                            by = list(State = renew_2022$state), sum, na.rm = TRUE)
+colnames(renew_2022_sum)[2] <- "Renewable_2022"
+
+renew_2023_sum <- aggregate(as.numeric(renew_2023$renewable_use_2023),
+                            by = list(State = renew_2023$state), sum, na.rm = TRUE)
+colnames(renew_2023_sum)[2] <- "Renewable_2023"
+
+total_use_2022[1] <- total_use_2021[1]
+total_use_2023[1] <- total_use_2021[1]
+numeric_2021 <- apply(total_use_2021[, -1], 2, as.numeric)
+numeric_2022 <- apply(total_use_2022[, -1], 2, as.numeric)
+numeric_2023 <- apply(total_use_2023[, -1], 2, as.numeric)
+total_energy_2021 <- colSums(numeric_2021, na.rm = TRUE)
+total_energy_2022 <- colSums(numeric_2022, na.rm = TRUE)
+total_energy_2023 <- colSums(numeric_2023, na.rm = TRUE)
+
+total_2021_long <- data.frame(State = names(total_use_2021)[-1],
+                              Total_2021 = total_energy_2021)
+total_2022_long <- data.frame(State = names(total_use_2022)[-1],
+                              Total_2022 = total_energy_2022)
+total_2023_long <- data.frame(State = names(total_use_2023)[-1],
+                              Total_2023 = total_energy_2023)
+head(total_2021_long)
+
+energy_2021 <- merge(renew_2021_sum, total_2021_long, by = "State", all.x = TRUE)
+energy_2021$Pct_Renew_2021 <- energy_2021$Renewable_2021 / energy_2021$Total_2021
+
+energy_2022 <- merge(renew_2022_sum, total_2022_long, by = "State", all.x = TRUE)
+energy_2022$Pct_Renew_2022 <- energy_2022$Renewable_2022 / energy_2022$Total_2022
+
+energy_2023 <- merge(renew_2023_sum, total_2023_long, by = "State", all.x = TRUE)
+energy_2023$Pct_Renew_2023 <- energy_2023$Renewable_2023 / energy_2023$Total_2023
+head(energy_2021)
+
+energy_all <- Reduce(function(x, y) merge(x, y, by = "State", all = TRUE),
+                     list(energy_2021, energy_2022, energy_2023))
+
+energy_all <- merge(energy_all, ev_regs[, c("State", "count.evs")], by = "State", all.x = TRUE)
+energy_all <- merge(energy_all, avg_price[, c("State", "x2021", "x2022", "x2023")],
+                    by = "State", all.x = TRUE)
+
+energy_all$Renew_Growth_21_23 <- (energy_all$Pct_Renew_2023 - energy_all$Pct_Renew_2021) * 100
+energy_all$EVs_per_BTU <- energy_all$count.evs / energy_all$Total_2023
+
+head(energy_all)
 
 ```
 
 ## **Part 4: Mapping Visualization**
-
+   
 ```{r}
+us_map <- map_data("state")
+energy_all$State_lower <- tolower(energy_all$State)
 
+map_renew_growth <- us_map %>%
+  left_join(energy_all, by = c("region" = "State_lower"))
+
+ggplot(map_renew_growth, aes(x = long, y = lat, group = group, fill = Renew_Growth_21_23)) +
+  geom_polygon(color = "black") +
+  coord_fixed(1.3) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green",
+                       midpoint = 0, na.value = "grey90",
+                       name = "Change 21-23 (%)") +
+  labs(title = "Change in Renewable Energy Share (2021-2023)") +
+  theme_minimal() +
+  theme(axis.text = element_blank(),
+        axis.title = element_blank(),
+        panel.grid = element_blank())
+
+#Q1 Renewable Share Change 2021-2023
+
+energy_all[, c("State", "Pct_Renew_2021", "Pct_Renew_2023", "Renew_Growth_21_23")]
+
+#Q2 Renewable share vs EVs
+plot(energy_all$Pct_Renew_2023, energy_all$count.evs,
+     xlab = "Renewable Share 2023", ylab = "EV Count 2023",
+     main = "Renewable Energy Share vs EV Registrations")
+cor(energy_all$Pct_Renew_2023, energy_all$count.evs, use = "complete.obs")
+ggplot(energy_all, aes(x = Pct_Renew_2023, y = count.evs)) +
+  geom_point(color = "blue", size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "darkgreen", linetype = "dashed") +
+  labs(title = "EV Registrations vs Renewable Energy Share (2023)",
+       x = "Renewable Share 2023", y = "EV Count 2023") +
+  theme_minimal()
+
+#Q3 Renewable share vs average price
+plot(energy_all$Pct_Renew_2023, energy_all$x2023,
+     xlab = "Renewable Share 2023", ylab = "Avg Energy Price 2023 ($/MMBtu)",
+     main = "Renewable Share vs Energy Price")
+cor(energy_all$Pct_Renew_2023, energy_all$x2023, use = "complete.obs")
+
+ggplot(energy_all, aes(x = Pct_Renew_2023, y = x2023)) +
+  geom_point(color = "orange", size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", color = "red", linetype = "dashed") +
+  labs(title = "Energy Price vs Renewable Energy Share (2023)",
+       x = "Renewable Share 2023", y = "Avg Energy Price 2023 ($/MMBtu)") +
+  theme_minimal()
+cor(energy_all$Pct_Renew_2023, energy_all$x2023, use = "complete.obs")
+
+energy_long <- energy_all %>%
+  select(State_lower, Pct_Renew_2021, Pct_Renew_2022, Pct_Renew_2023) %>%
+  tidyr::pivot_longer(cols = starts_with("Pct_Renew"),
+                      names_to = "Year",
+                      values_to = "RenewableShare")
 ```
+
+
+
+## **Part 5: Observed Pattern
+
+Renewable Energy Growth (2021–2023):
+California, New Mexico, and Vermont showed the largest increases in renewable share. Some states, like Alabama and Tennessee, saw small declines.
+
+Renewable Share vs EVs:
+Weak positive correlation (r ≈ 0.074), suggesting states with higher renewable share do not necessarily have substantially higher EV adoption. Visual inspection shows California as an outlier with high EV count and moderate renewable share.
+
+Renewable Share vs Energy Price:
+Negligible correlation (r ≈ 0.054), indicating renewable share does not strongly influence average energy price across states.
+
+The map reinforces that states with high renewable energy share are geographically clustered. States with both high renewable share and significant EV adoption are limited (e.g., California, Vermont), highlighting regional differences in energy and transportation transitions.
+
+In conclusion, while renewable energy adoption has grown modestly in several states, there is not a strong nationwide link between renewable share and EV registrations or energy prices. Geographic visualization helps identify states leading in renewable energy and supports more targeted policy interventions.
+
+
+
+
+
